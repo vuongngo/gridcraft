@@ -13,6 +13,6 @@
   },
   "files": ["po_wasm.mjs", "po_wasm.d.ts", "po_wasm_bg.wasm", "LICENSE-MIT", "LICENSE-APACHE", "NOTICE"],
   "publishConfig": {
-    "access": "restricted"
+    "access": "public"
   }
 }
