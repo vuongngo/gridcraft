@@ -1,0 +1,51 @@
+name: po-wasm
+
+# Builds the Po wrapper to WebAssembly, tests it under Node, and publishes
+# @agimon-ai/gridcraft-wasm when a po-wasm-v<version> tag is pushed.
+on:
+  push:
+    branches: [main]
+    tags: ['po-wasm-v*']
+    paths: ['crates/**', 'Cargo.toml', 'Cargo.lock', '.github/workflows/po-wasm.yml']
+  pull_request:
+    paths: ['crates/po-wasm/**', '.github/workflows/po-wasm.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: '1.95.0'
+          targets: wasm32-unknown-unknown
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+      - name: Install wasm-bindgen (matches the crate's pinned version)
+        run: cargo install wasm-bindgen-cli --version 0.2.129 --locked
+      - name: Build
+        run: cargo build --release --target wasm32-unknown-unknown -p po-wasm --locked
+      - name: Generate bindings
+        run: |
+          wasm-bindgen --target web --out-dir pkg target/wasm32-unknown-unknown/release/po_wasm.wasm
+          mv pkg/po_wasm.js pkg/po_wasm.mjs
+          cp crates/po-wasm/npm/package.json LICENSE-MIT LICENSE-APACHE NOTICE pkg/
+      - name: Test under Node
+        run: PO_WASM_DIR=pkg node --test crates/po-wasm/tests/roundtrip.test.mjs
+      - name: Record size
+        run: |
+          echo "raw $(stat -c %s pkg/po_wasm_bg.wasm) bytes, gzip $(gzip -9 -c pkg/po_wasm_bg.wasm | wc -c) bytes" >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish
+        if: startsWith(github.ref, 'refs/tags/po-wasm-v')
+        working-directory: pkg
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm version --no-git-tag-version "${GITHUB_REF_NAME#po-wasm-v}"
+          npm publish
